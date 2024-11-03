@@ -20,15 +20,15 @@ from PIL import Image
 
 styles = getSampleStyleSheet()
 
-pdfmetrics.registerFont(TTFont("Almarai", "Almarai-Regular.ttf"))
-pdfmetrics.registerFont(TTFont("Almarai_bold", "Almarai-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("dejavu", "DejaVuSansCondensed.ttf"))
+pdfmetrics.registerFont(TTFont("Cairo_medium", "Cairo-Medium.ttf"))
+
 
 
 class ImageAndHeader(Flowable):
-    def __init__(self, img_path, logo_path, header_text, width):
+    def __init__(self, img_path, header_text, width):
         Flowable.__init__(self)
         self.img_path = img_path
-        self.logo_path = logo_path
         self.header_text = header_text
         self.width = width
         self.height = 3 * inch  # Adjust this value to match the desired height
@@ -40,19 +40,11 @@ class ImageAndHeader(Flowable):
         canvas = self.canv
         # Draw background image
         canvas.drawImage(self.img_path, 0, 0, self.width, self.height)
-        
-        # Draw logo
-        logo_width = 1.5 * inch
-        logo_height = logo_width / 4  # Assuming the logo aspect ratio is 4:1
-        canvas.drawImage(self.logo_path, self.width - logo_width - 0.5*inch, 
-                         self.height - logo_height - 0.5*inch, 
-                         width=logo_width, height=logo_height)
-        
         # Draw header text
-        canvas.setFont("Almarai", 18)
-        text_width = stringWidth(self.header_text, "Almarai", 18)
+        canvas.setFont("dejavu", 18)
+        text_width = stringWidth(self.header_text, "dejavu", 18)
         canvas.setFillColorRGB(1, 1, 1)  # White color for text
-        canvas.drawString(0.5*inch, self.height - 1*inch, self.header_text)
+        canvas.drawString(6*inch, self.height - 1*inch, self.header_text)
 
 def calculate_attendance_percentage(row, attendance_columns):
   total_weeks = len(attendance_columns)
@@ -77,31 +69,14 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     styleN = styles['Normal']
     styleH_1 = styles['Heading1']
 
-    arabic_text_style = ParagraphStyle(
-        'border',
-        parent=styleN,
-        borderColor='#333333',
-        borderWidth=1,
-        borderPadding=2,
-        fontName="Almarai"
-    )
-
-    header_text_style = ParagraphStyle('header_style',parent=styleN,fontName="Almarai")
+    header_text_style = ParagraphStyle('header_style',parent=styleN,fontName="dejavu")
     
     arabic_text_name = str(data[0])
     student_name_label = 'الاسم'
-    class_presence_week_1 = str(data[attendance_columns[0]])
-    class_presence_week_2 = str(data[attendance_columns[1]])
-    class_presence_week_3 = str(data[attendance_columns[2]])
-    class_presence_week_4 = str(data[attendance_columns[3]])
 
     # Reshape and apply bidi algorithm
     reshaped_student_name_label = arabic_reshaper.reshape(student_name_label)
     rehaped_text_name = arabic_reshaper.reshape(arabic_text_name)
-    rehaped_text_presence_week_1 = arabic_reshaper.reshape(class_presence_week_1)
-    rehaped_text_presence_week_2 = arabic_reshaper.reshape(class_presence_week_2)
-    rehaped_text_presence_week_3 = arabic_reshaper.reshape(class_presence_week_3)
-    rehaped_text_presence_week_4 = arabic_reshaper.reshape(class_presence_week_4)
     reshaped_header_text = arabic_reshaper.reshape("تقرير الطالب الشهري")
 
     bidi_text_name = get_display(rehaped_text_name)
@@ -119,17 +94,12 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     image_path = './media/about-bg.png'
     c.drawImage(image_path, 0, height - 219, width, 219)
 
-    # Draw the logo
-    logo_path = './media/character.png'
-    logo_width = 49
-    logo_height = 197
-    c.drawImage(logo_path, width - logo_width - 0.5*inch, height - 0.5*inch - logo_height, width=logo_width, height=logo_height)
-
+    
     # Draw the header text
-    c.setFont("Almarai", 24)
+    c.setFont("dejavu", 24)
     header_text = bidi_text_header
-    text_width = stringWidth(header_text, "Almarai", 24)
-    c.drawString((width - text_width) / 2, height - 1.5*inch, header_text)
+    text_width = stringWidth(header_text, "dejavu", 24)
+    c.drawString((width - text_width), height - 1.5*inch, header_text)
 
     # Save the canvas state
     c.save()
@@ -141,19 +111,32 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     width, height = letter
     
     story = []
-    image_and_header = ImageAndHeader('./media/about-bg.png', './media/character.png', bidi_text_header, width)
+    image_and_header = ImageAndHeader('./media/about-bg.png', bidi_text_header, width)
     story.append(image_and_header)
     
     # Add some space after the image
     story.append(Spacer(1, 20))
 
     
-    story.append(Paragraph(bidi_text_student_name_label, header_text_style))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(bidi_text_name, header_text_style))
-    story.append(Spacer(1, 14))
-    
-    
+    student_name_data = [["", Paragraph(bidi_text_name, header_text_style),Paragraph(bidi_text_student_name_label, header_text_style), ]]
+    student_name_table = Table(student_name_data, colWidths=[1*inch, 2*inch])
+    student_name_table.hAlign = 'RIGHT'
+
+
+    # Style the table
+    style = TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('FONTNAME', (0, 0), (-1, -1), 'dejavu'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ])
+
+    student_name_table.setStyle(style)
+    story.append(student_name_table)
+
     # Add attendance percentages
     story.append(Spacer(1, 14))
 
