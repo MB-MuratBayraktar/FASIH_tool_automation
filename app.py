@@ -11,20 +11,24 @@ from reportlab.pdfbase import pdfmetrics
 styles = getSampleStyleSheet()
 
 pdfmetrics.registerFont(TTFont("Khayal", "Khayal-Font-Demo.ttf"))
-
 def calculate_attendance_percentage(row, attendance_columns):
-    total_weeks = len(attendance_columns)
-    attendance_values = row[attendance_columns].values
-    
-    present_count = sum(1 for val in attendance_values if val == "ملتزم الحضور")
-    middle_count = sum(1 for val in attendance_values if val == "متوسط الالتزام")
-    absent_count = sum(1 for val in attendance_values if val == "لا يلتزم")
-    
-    presence_percentage = (present_count / total_weeks) * 100
-    middle_percentage = (middle_count / total_weeks) * 100
-    absence_percentage = (absent_count / total_weeks) * 100
-    
-    return presence_percentage, middle_percentage, absence_percentage
+  total_weeks = len(attendance_columns)
+  attendance_values = row[attendance_columns].values
+
+  present_count = sum(1 for val in attendance_values if val == "ملتزم بالحضور")
+  middle_count = sum(1 for val in attendance_values if val == "متوسط الالتزام")
+  # Count empty cells and None values as absent
+  not_present = sum(1 for val in attendance_values if val == "لا يحضر")
+  not_verified = sum(1 for val in attendance_values if val == None)
+  empty_cell = sum(1 for val in attendance_values if val == "")
+  absent_count = not_present + not_verified + empty_cell
+
+  presence_percentage = (present_count / total_weeks) * 100
+  middle_percentage = (middle_count / total_weeks) * 100
+  absence_percentage = (absent_count / total_weeks) * 100
+
+  return presence_percentage, middle_percentage, absence_percentage, present_count, middle_count, absent_count, empty_cell, not_verified, not_present
+
 
 def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     styleN = styles['Normal']
@@ -59,7 +63,7 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     bidi_text_presence_week_4 = get_display(rehaped_text_presence_week_4)
 
     # Calculate attendance percentages
-    presence_percentage, middle_percentage, absence_percentage = calculate_attendance_percentage(data, attendance_columns)
+    presence_percentage, middle_percentage, absence_percentage, presence_count, middle_count, absence_count, empty_cell, not_verified, not_present = calculate_attendance_percentage(data, attendance_columns)
 
     story = []
     image_path = './logo.png'  # Replace with your image path
@@ -94,6 +98,13 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     story.append(Paragraph(f"Presence Percentage: {presence_percentage:.2f}%", styleN))
     story.append(Paragraph(f"Middle Percentage: {middle_percentage:.2f}%", styleN))
     story.append(Paragraph(f"Absence Percentage: {absence_percentage:.2f}%", styleN))
+    story.append(Spacer(1, 14))
+    story.append(Paragraph(f"Total presence count: {presence_count}", styleN))
+    story.append(Paragraph(f"Total middle count: {middle_count}", styleN))
+    story.append(Paragraph(f"Total absence count: {absence_count}", styleN))
+    story.append(Paragraph(f"Total not verified count: {not_verified}", styleN))
+    story.append(Paragraph(f"Total not present count: {not_present}", styleN))
+    story.append(Paragraph(f"Total empty cell count: {empty_cell}", styleN))
     
     doc = SimpleDocTemplate(os.path.join(folder_name, f'student_{i}.pdf'), pagesize=letter)
     doc.build(story)
@@ -180,6 +191,7 @@ def main():
                 for i, (index, row) in enumerate(cropped_df.iterrows(), start=1):
                     generate_arabic_pdf(row, i, output_dir, attendance_columns)
                 st.success(f"PDFs generated successfully for sheet: {sheet_name}")
+                st.text(f"the followings are the attendance columns: {attendance_columns}")
                     
             except Exception as e:
                 st.error(f"An error occurred while processing sheet {sheet_name}: {e}")
