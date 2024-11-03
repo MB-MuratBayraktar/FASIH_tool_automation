@@ -72,14 +72,20 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     header_text_style = ParagraphStyle('header_style',parent=styleN,fontName="dejavu")
     
     arabic_text_name = str(data[0])
+    monthly_evaluation = str(data["التقييم الشهري للطالب"])
+
     student_name_label = 'الاسم'
 
     # Reshape and apply bidi algorithm
     reshaped_student_name_label = arabic_reshaper.reshape(student_name_label)
     rehaped_text_name = arabic_reshaper.reshape(arabic_text_name)
+    reshaped_monthly_evaluation_label = arabic_reshaper.reshape("التقييم الشهري للطالب")
+    reshaped_monthly_evaluation = arabic_reshaper.reshape(monthly_evaluation)
     reshaped_header_text = arabic_reshaper.reshape("تقرير الطالب الشهري")
 
     bidi_text_name = get_display(rehaped_text_name)
+    bidi_text_monthly_evaluation_label = get_display(reshaped_monthly_evaluation_label)
+    bidi_text_monthly_evaluation = get_display(reshaped_monthly_evaluation)
     bidi_text_student_name_label = get_display(reshaped_student_name_label)
     bidi_text_header = get_display(reshaped_header_text)
 
@@ -156,6 +162,14 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
     ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
 
+    monthly_evaluation_data = [["", Paragraph(bidi_text_monthly_evaluation_label, header_text_style), Paragraph(bidi_text_monthly_evaluation, header_text_style)]]
+    monthly_evaluation_table = Table(monthly_evaluation_data, colWidths=[2*inch, 2*inch, 4*inch])
+    monthly_evaluation_table.hAlign = 'RIGHT'
+    monthly_evaluation_table.setStyle(style)
+    story.append(monthly_evaluation_table)
+    story.append(Spacer(1, 14))
+
+
     story.append(table)
     doc.build(story)
 
@@ -179,6 +193,18 @@ def identify_attendance_columns(df):
         if any(keyword in col_str for keyword in ["الحضور والغياب الاسبوع الأول", "الحضور والغياب الاسبوع الثاني", "الحضور والغياب الاسبوع الثالث", "الحضور والغياب الاسبوع الرابع"]):
             attendance_columns.append(col_str)
     return attendance_columns
+
+def detect_and_rename_column(df, keyword):
+    for col in df.columns:
+        if keyword in col:
+            df.rename(columns={col: keyword}, inplace=True)
+            return df
+        if df[col].astype(str).str.contains(keyword).any():
+            df.columns = df.iloc[0]
+            df = df[1:]
+            df.rename(columns={col: keyword}, inplace=True)
+            return df
+    return df
 
 def adjust_columns_if_needed(df):
     attendance_keywords = ["الحضور والغياب الاسبوع الأول", "الحضور والغياب الاسبوع الثاني", "الحضور والغياب الاسبوع الثالث", "الحضور والغياب الاسبوع الرابع"]
