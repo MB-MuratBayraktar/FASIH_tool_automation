@@ -1,16 +1,59 @@
 import os
 import streamlit as st
 import pandas as pd
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import arabic_reshaper
+from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from bidi.algorithm import get_display
 from reportlab.pdfbase import pdfmetrics
+from reportlab.lib.units import inch
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.platypus import Flowable
+from PIL import Image
+
+
+
+
 styles = getSampleStyleSheet()
 
-pdfmetrics.registerFont(TTFont("Khayal", "Khayal-Font-Demo.ttf"))
+pdfmetrics.registerFont(TTFont("Almarai", "Almarai-Regular.ttf"))
+pdfmetrics.registerFont(TTFont("Almarai_bold", "Almarai-Bold.ttf"))
+
+
+class ImageAndHeader(Flowable):
+    def __init__(self, img_path, logo_path, header_text, width):
+        Flowable.__init__(self)
+        self.img_path = img_path
+        self.logo_path = logo_path
+        self.header_text = header_text
+        self.width = width
+        self.height = 3 * inch  # Adjust this value to match the desired height
+
+    def wrap(self, availWidth, availHeight):
+        return (self.width, self.height)
+
+    def draw(self):
+        canvas = self.canv
+        # Draw background image
+        canvas.drawImage(self.img_path, 0, 0, self.width, self.height)
+        
+        # Draw logo
+        logo_width = 1.5 * inch
+        logo_height = logo_width / 4  # Assuming the logo aspect ratio is 4:1
+        canvas.drawImage(self.logo_path, self.width - logo_width - 0.5*inch, 
+                         self.height - logo_height - 0.5*inch, 
+                         width=logo_width, height=logo_height)
+        
+        # Draw header text
+        canvas.setFont("Almarai", 18)
+        text_width = stringWidth(self.header_text, "Almarai", 18)
+        canvas.setFillColorRGB(1, 1, 1)  # White color for text
+        canvas.drawString(0.5*inch, self.height - 1*inch, self.header_text)
+
 def calculate_attendance_percentage(row, attendance_columns):
   total_weeks = len(attendance_columns)
   attendance_values = row[attendance_columns].values
@@ -27,7 +70,7 @@ def calculate_attendance_percentage(row, attendance_columns):
   middle_percentage = (middle_count / total_weeks) * 100
   absence_percentage = (absent_count / total_weeks) * 100
 
-  return presence_percentage, middle_percentage, absence_percentage, present_count, middle_count, absent_count, empty_cell, not_verified, not_present
+  return presence_percentage, middle_percentage, absence_percentage, present_count, middle_count, absent_count
 
 
 def generate_arabic_pdf(data, i, folder_name, attendance_columns):
@@ -40,73 +83,97 @@ def generate_arabic_pdf(data, i, folder_name, attendance_columns):
         borderColor='#333333',
         borderWidth=1,
         borderPadding=2,
-        fontName="Khayal"
+        fontName="Almarai"
     )
+
+    header_text_style = ParagraphStyle('header_style',parent=styleN,fontName="Almarai")
     
     arabic_text_name = str(data[0])
+    student_name_label = 'الاسم'
     class_presence_week_1 = str(data[attendance_columns[0]])
     class_presence_week_2 = str(data[attendance_columns[1]])
     class_presence_week_3 = str(data[attendance_columns[2]])
     class_presence_week_4 = str(data[attendance_columns[3]])
 
     # Reshape and apply bidi algorithm
+    reshaped_student_name_label = arabic_reshaper.reshape(student_name_label)
     rehaped_text_name = arabic_reshaper.reshape(arabic_text_name)
     rehaped_text_presence_week_1 = arabic_reshaper.reshape(class_presence_week_1)
     rehaped_text_presence_week_2 = arabic_reshaper.reshape(class_presence_week_2)
     rehaped_text_presence_week_3 = arabic_reshaper.reshape(class_presence_week_3)
     rehaped_text_presence_week_4 = arabic_reshaper.reshape(class_presence_week_4)
+    reshaped_header_text = arabic_reshaper.reshape("تقرير الطالب الشهري")
 
     bidi_text_name = get_display(rehaped_text_name)
-    bidi_text_presence_week_1 = get_display(rehaped_text_presence_week_1)
-    bidi_text_presence_week_2 = get_display(rehaped_text_presence_week_2)
-    bidi_text_presence_week_3 = get_display(rehaped_text_presence_week_3)
-    bidi_text_presence_week_4 = get_display(rehaped_text_presence_week_4)
+    bidi_text_student_name_label = get_display(reshaped_student_name_label)
+    bidi_text_header = get_display(reshaped_header_text)
 
     # Calculate attendance percentages
-    presence_percentage, middle_percentage, absence_percentage, presence_count, middle_count, absence_count, empty_cell, not_verified, not_present = calculate_attendance_percentage(data, attendance_columns)
+    presence_percentage, middle_percentage, absence_percentage, presence_count, middle_count, absence_count = calculate_attendance_percentage(data, attendance_columns)
 
-    story = []
-    image_path = './logo.png'  # Replace with your image path
-    img = Image(image_path)
-    img.hAlign = 'CENTER'
-    story.append(img)
-    story.append(Spacer(1, 12))
+    pdf_path = os.path.join(folder_name, f'student_{i}.pdf')
+    c = canvas.Canvas(pdf_path, pagesize=letter)
+    width, height = letter
 
-    story.append(Paragraph("Student name", styleH_1))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(bidi_text_name, arabic_text_style))
-    story.append(Spacer(1, 14))
+    # Draw the background image
+    image_path = './media/about-bg.png'
+    c.drawImage(image_path, 0, height - 219, width, 219)
 
-    story.append(Paragraph("student presence week 1:", styleH_1))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(bidi_text_presence_week_1, arabic_text_style))
+    # Draw the logo
+    logo_path = './media/character.png'
+    logo_width = 49
+    logo_height = 197
+    c.drawImage(logo_path, width - logo_width - 0.5*inch, height - 0.5*inch - logo_height, width=logo_width, height=logo_height)
 
-    story.append(Paragraph("student presence week 2:", styleH_1))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(bidi_text_presence_week_2, arabic_text_style))
+    # Draw the header text
+    c.setFont("Almarai", 24)
+    header_text = bidi_text_header
+    text_width = stringWidth(header_text, "Almarai", 24)
+    c.drawString((width - text_width) / 2, height - 1.5*inch, header_text)
+
+    # Save the canvas state
+    c.save()
+
+    # Create the story for the rest of the content
+    doc = SimpleDocTemplate(os.path.join(folder_name, f'student_{i}.pdf'),
+                             pagesize=letter, leftMargin=0, rightMargin=0, bottomMargin=0, topMargin=0.5*inch)
     
-    story.append(Paragraph("student presence week 3:", styleH_1))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(bidi_text_presence_week_3, arabic_text_style))
+    width, height = letter
+    
+    story = []
+    image_and_header = ImageAndHeader('./media/about-bg.png', './media/character.png', bidi_text_header, width)
+    story.append(image_and_header)
+    
+    # Add some space after the image
+    story.append(Spacer(1, 20))
 
-    story.append(Paragraph("student presence week 4:", styleH_1))
+    
+    story.append(Paragraph(bidi_text_student_name_label, header_text_style))
     story.append(Spacer(1, 8))
-    story.append(Paragraph(bidi_text_presence_week_4, arabic_text_style))
-
+    story.append(Paragraph(bidi_text_name, header_text_style))
+    story.append(Spacer(1, 14))
+    
+    
     # Add attendance percentages
     story.append(Spacer(1, 14))
-    story.append(Paragraph(f"Presence Percentage: {presence_percentage:.2f}%", styleN))
-    story.append(Paragraph(f"Middle Percentage: {middle_percentage:.2f}%", styleN))
-    story.append(Paragraph(f"Absence Percentage: {absence_percentage:.2f}%", styleN))
-    story.append(Spacer(1, 14))
-    story.append(Paragraph(f"Total presence count: {presence_count}", styleN))
-    story.append(Paragraph(f"Total middle count: {middle_count}", styleN))
-    story.append(Paragraph(f"Total absence count: {absence_count}", styleN))
-    story.append(Paragraph(f"Total not verified count: {not_verified}", styleN))
-    story.append(Paragraph(f"Total not present count: {not_present}", styleN))
-    story.append(Paragraph(f"Total empty cell count: {empty_cell}", styleN))
+
+    data = [["Metric", "Count","Percentage"],
+            [f"Total middle count:", presence_count,f"{presence_percentage:.2f}%"],
+            [f"Total middle count:", middle_count,f"{middle_percentage:.2f}%"],
+            [f"Total absence count:", absence_count,f"{absence_percentage:.2f}%"]]
     
-    doc = SimpleDocTemplate(os.path.join(folder_name, f'student_{i}.pdf'), pagesize=letter)
+    table = Table(data)
+    table.setStyle(TableStyle([
+    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    ('FONTSIZE', (0, 0), (-1, 0), 12),
+    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+
+    story.append(table)
     doc.build(story)
 
 def crop_df_to_student_name_header(df):
