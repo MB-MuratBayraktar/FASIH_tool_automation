@@ -14,6 +14,8 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable
 from PIL import Image
+from reportlab.lib.enums import TA_RIGHT
+
 
 
 
@@ -24,27 +26,27 @@ pdfmetrics.registerFont(TTFont("dejavu", "DejaVuSansCondensed.ttf"))
 pdfmetrics.registerFont(TTFont("Cairo_medium", "Cairo-Medium.ttf"))
 
 
-
 class ImageAndHeader(Flowable):
-    def __init__(self, img_path, header_text, width):
+    def __init__(self, img_path, header_text, width, height):
         Flowable.__init__(self)
         self.img_path = img_path
         self.header_text = header_text
         self.width = width
-        self.height = 3 * inch  # Adjust this value to match the desired height
-
-    def wrap(self, availWidth, availHeight):
-        return (self.width, self.height)
+        self.height = height
 
     def draw(self):
         canvas = self.canv
         # Draw background image
         canvas.drawImage(self.img_path, 0, 0, self.width, self.height)
+
         # Draw header text
-        canvas.setFont("dejavu", 18)
-        text_width = stringWidth(self.header_text, "dejavu", 18)
-        canvas.setFillColorRGB(1, 1, 1)  # White color for text
-        canvas.drawString(6*inch, self.height - 1*inch, self.header_text)
+        canvas.setFont("dejavu", 24)
+        canvas.setFillColor(colors.white)
+        reshaped_text = arabic_reshaper.reshape(self.header_text)
+        bidi_text = get_display(reshaped_text)
+        text_width = stringWidth(bidi_text, "dejavu", 24)
+        canvas.drawString((self.width - text_width)/2, self.height - 0.5 * inch, bidi_text)
+
 
 def calculate_attendance_percentage(row, attendance_columns):
   total_weeks = len(attendance_columns)
@@ -64,114 +66,134 @@ def calculate_attendance_percentage(row, attendance_columns):
 
   return presence_percentage, middle_percentage, absence_percentage, present_count, middle_count, absent_count
 
-
 def generate_arabic_pdf(data, i, folder_name, attendance_columns):
+
+    # Story content
+    story = []
+
     styleN = styles['Normal']
     styleH_1 = styles['Heading1']
-
-    header_text_style = ParagraphStyle('header_style',parent=styleN,fontName="dejavu")
+    header_text_style = ParagraphStyle('header_style', parent=styleN, fontName="dejavu")
     
+    header_text_style_right = ParagraphStyle(
+        'HeaderTextRight',
+        parent=header_text_style,
+        alignment=2,  # 2 represents right alignment,
+        fontName="dejavu"
+    )
+
     arabic_text_name = str(data[0])
-    monthly_evaluation = str(data["التقييم الشهري للطالب"])
+    fields_to_check = {
+        "monthly_evaluation" : str(data.get("التقييم الشهري للطالب","")),
+        "monthly_evaluation_1" : str(data.get("التقييم الشهري للطالب_1","")),
+        "monthly_evaluation_2" : str(data.get("التقييم الشهري للطالب_2","")),
+        "monthly_evaluation_3" : str(data.get("التقييم الشهري للطالب_3","")),
+        "monthly_evaluation_4" : str(data.get("التقييم الشهري للطالب_4","")),
+        "monthly_evaluation_5" : str(data.get("التقييم الشهري للطالب_5","")),
+        "monthly_evaluation_6" : str(data.get("التقييم الشهري للطالب_6","")),
+        "monthly_evaluation_7" : str(data.get( "التقييم الشهري للطالب_7","")),
 
-    student_name_label = 'الاسم'
-
+    }
+    
     # Reshape and apply bidi algorithm
-    reshaped_student_name_label = arabic_reshaper.reshape(student_name_label)
+    reshaped_student_name_label = arabic_reshaper.reshape("الاسم")
     rehaped_text_name = arabic_reshaper.reshape(arabic_text_name)
-    reshaped_monthly_evaluation_label = arabic_reshaper.reshape("التقييم الشهري للطالب")
-    reshaped_monthly_evaluation = arabic_reshaper.reshape(monthly_evaluation)
-    reshaped_header_text = arabic_reshaper.reshape("تقرير الطالب الشهري")
+
 
     bidi_text_name = get_display(rehaped_text_name)
-    bidi_text_monthly_evaluation_label = get_display(reshaped_monthly_evaluation_label)
-    bidi_text_monthly_evaluation = get_display(reshaped_monthly_evaluation)
     bidi_text_student_name_label = get_display(reshaped_student_name_label)
-    bidi_text_header = get_display(reshaped_header_text)
+    student_name_data = [["", Paragraph(bidi_text_name, header_text_style), Paragraph(bidi_text_student_name_label, header_text_style_right)]]
+    
+    student_name_table = Table(student_name_data)
+
+    # Define the table style
+    table_style = TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),  # Align all cells to the right
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),  # Vertically align content to the middle
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),  # Set text color
+    ])
+
+    # Apply the style to the table
+    student_name_table.setStyle(table_style)
+
+
 
     # Calculate attendance percentages
     presence_percentage, middle_percentage, absence_percentage, presence_count, middle_count, absence_count = calculate_attendance_percentage(data, attendance_columns)
 
+    # PDF Path
     pdf_path = os.path.join(folder_name, f'student_{i}.pdf')
-    c = canvas.Canvas(pdf_path, pagesize=letter)
-    width, height = letter
 
-    # Draw the background image
-    image_path = './media/about-bg.png'
-    c.drawImage(image_path, 0, height - 219, width, 219)
+    # Create the document
+    doc = SimpleDocTemplate(
+        pdf_path,
+        pagesize=letter,
+        leftMargin=0,
+        rightMargin=0,
+        bottomMargin=0,
+        topMargin=1 * inch
+    )
 
-    
-    # Draw the header text
-    c.setFont("dejavu", 24)
-    header_text = bidi_text_header
-    text_width = stringWidth(header_text, "dejavu", 24)
-    c.drawString((width - text_width), height - 1.5*inch, header_text)
 
-    # Save the canvas state
-    c.save()
-
-    # Create the story for the rest of the content
-    doc = SimpleDocTemplate(os.path.join(folder_name, f'student_{i}.pdf'),
-                             pagesize=letter, leftMargin=0, rightMargin=0, bottomMargin=0, topMargin=0.5*inch)
-    
-    width, height = letter
-    
-    story = []
-    image_and_header = ImageAndHeader('./media/about-bg.png', bidi_text_header, width)
+    # Add the ImageAndHeader at the top
+    image_and_header = ImageAndHeader('./media/about-bg.png', "تقرير الطالب الشهري", letter[0], 2 * inch)
     story.append(image_and_header)
-    
-    # Add some space after the image
     story.append(Spacer(1, 20))
 
+    # Student name
+    story.append(student_name_table)
+    story.append(Spacer(1, 20))
+
+    total_evaluations_label = "التقييم الشهري من المعلمين"
+    reshaped_total_evaluations_label = arabic_reshaper.reshape(total_evaluations_label)
+    bidi_total_evaluations_label = get_display(reshaped_total_evaluations_label)
+    story.append(Paragraph(bidi_total_evaluations_label, header_text_style_right))
+    story.append(Spacer(1, 20))
+
+    total_monthly_evaluations = []
+    for label, value in fields_to_check.items():
+        if value:
+            reshaped_label = arabic_reshaper.reshape(label)
+            reshaped_value = arabic_reshaper.reshape(str(value))
+            bidi_label = get_display(reshaped_label)
+            bidi_value = get_display(reshaped_value)
+            if bidi_value != "nan":
+                total_monthly_evaluations.append(bidi_value)
     
-    student_name_data = [["", Paragraph(bidi_text_name, header_text_style),Paragraph(bidi_text_student_name_label, header_text_style), ]]
-    student_name_table = Table(student_name_data, colWidths=[1*inch, 2*inch])
-    student_name_table.hAlign = 'RIGHT'
+    if total_monthly_evaluations:
+        combined_values = ", ".join(total_monthly_evaluations)
+        right_aligned_style = ParagraphStyle(
+            'RightAligned',
+            parent=header_text_style,
+            alignment=TA_RIGHT
+        )
+        story.append(Paragraph(combined_values, right_aligned_style))
 
 
-    # Style the table
-    style = TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+
+
+    # Attendance table
+    attendance_data = [
+        ["Metric", "Count", "Percentage"],
+        ["Present:", presence_count, f"{presence_percentage:.2f}%"],
+        ["Moderately present:", middle_count, f"{middle_percentage:.2f}%"],
+        ["Absent:", absence_count, f"{absence_percentage:.2f}%"],
+    ]
+    attendance_table = Table(attendance_data)
+    attendance_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, -1), 'dejavu'),
         ('FONTSIZE', (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-    ])
-
-    student_name_table.setStyle(style)
-    story.append(student_name_table)
-
-    # Add attendance percentages
-    story.append(Spacer(1, 14))
-
-    data = [["Metric", "Count","Percentage"],
-            [f"Total middle count:", presence_count,f"{presence_percentage:.2f}%"],
-            [f"Total middle count:", middle_count,f"{middle_percentage:.2f}%"],
-            [f"Total absence count:", absence_count,f"{absence_percentage:.2f}%"]]
-    
-    table = Table(data)
-    table.setStyle(TableStyle([
-    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-    ('FONTSIZE', (0, 0), (-1, 0), 12),
-    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
+    story.append(Spacer(1, 20))
+    story.append(attendance_table)
 
-    monthly_evaluation_data = [["", Paragraph(bidi_text_monthly_evaluation_label, header_text_style), Paragraph(bidi_text_monthly_evaluation, header_text_style)]]
-    monthly_evaluation_table = Table(monthly_evaluation_data, colWidths=[2*inch, 2*inch, 4*inch])
-    monthly_evaluation_table.hAlign = 'RIGHT'
-    monthly_evaluation_table.setStyle(style)
-    story.append(monthly_evaluation_table)
-    story.append(Spacer(1, 14))
-
-
-    story.append(table)
+    # Build the document
     doc.build(story)
+
 
 def crop_df_to_student_name_header(df):
     specific_word = "اسم الطالب"
@@ -228,49 +250,56 @@ def deduplicate_columns(columns):
             counts[col] = 0
             new_columns.append(col)
     return new_columns
-
 def main():
     st.title("PDF Generator from Excel")
 
-    # File Uploader
     uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
 
     if uploaded_file is not None:
-        # Get the sheet names
         xls = pd.ExcelFile(uploaded_file)
         sheet_names = xls.sheet_names
 
         for sheet_name in sheet_names:
-            # Read the selected sheet into a DataFrame
             df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
-            # Adjust columns if needed
             df = adjust_columns_if_needed(df)
-            # Deduplicate columns
             df.columns = deduplicate_columns(df.columns)
-            # Display the DataFrame (optional)
-            st.dataframe(df)
+            #st.dataframe(df)
             cropped_df = crop_df_to_student_name_header(df)
-            st.dataframe(cropped_df)
+            #st.dataframe(cropped_df)
             
-            # Identify attendance columns
             attendance_columns = identify_attendance_columns(cropped_df)
             if not attendance_columns:
-                st.error(f"No attendance columns found in sheet: {sheet_name}")
+                #st.error(f"No attendance columns found in sheet: {sheet_name}")
                 continue
             
-            # Create a directory for the selected sheet
             output_dir = os.path.join('generated_docs', sheet_name)
             os.makedirs(output_dir, exist_ok=True)
 
-            # Process and Generate PDFs
             try:
+                total_students = len(cropped_df)
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
                 for i, (index, row) in enumerate(cropped_df.iterrows(), start=1):
+                    pdf_path = os.path.join(output_dir, f'student_{i}.pdf')
                     generate_arabic_pdf(row, i, output_dir, attendance_columns)
-                st.success(f"PDFs generated successfully for sheet: {sheet_name}")
-                st.text(f"the followings are the attendance columns: {attendance_columns}")
+                    
+                    if os.path.exists(pdf_path):
+                        status_text.text(f"Generated PDF for student {i}/{total_students} in sheet: {sheet_name}")
+                    else:
+                        status_text.warning(f"PDF not generated for student {i}/{total_students} in sheet: {sheet_name}")
+                    
+                    # Update progress bar
+                    progress = int(i / total_students * 100)
+                    progress_bar.progress(progress)
+
+                progress_bar.empty()
+                status_text.success(f"PDF generation completed for sheet: {sheet_name}")
+                st.text(f"The following are the attendance columns: {attendance_columns}")
                     
             except Exception as e:
                 st.error(f"An error occurred while processing sheet {sheet_name}: {e}")
+
 
 if __name__ == '__main__':
     main()
